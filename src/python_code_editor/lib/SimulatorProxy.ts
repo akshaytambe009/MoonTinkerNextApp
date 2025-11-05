@@ -2,6 +2,8 @@
 import * as Comlink from "comlink";
 import type { MicrobitEvent } from "../mock/types";
 import { Simulator } from "@/python_code_editor/lib/Simulator";
+import { AudioPlayer } from "./AudioPlayer";
+
 
 type SupportedLanguage = "python";
 type SupportedController = "microbit" | "microbitWithBreakout";
@@ -28,6 +30,8 @@ export class SimulatorProxy {
   private worker: Worker;
   private simulatorRemoteInstance: Comlink.Remote<any> | null = null;
   private options: SimulatorOptions;
+  private audio: AudioPlayer | null = null;
+
 
   constructor(opts: SimulatorOptions) {
     this.options = {
@@ -62,12 +66,52 @@ export class SimulatorProxy {
       this.options.onOutput,
       this.options.onEvent
     );
+
+    // ✅ Initialize Audio Player
+    this.audio = new AudioPlayer();
   }
 
   async run(code: string): Promise<string> {
-    if (!this.simulatorRemoteInstance) throw new Error("Not initialized at run.");
-    return this.simulatorRemoteInstance.run(code);
+  if (!this.simulatorRemoteInstance) throw new Error("Not initialized at run.");
+
+  // Initialize Audio if needed
+  if (!this.audio) this.audio = new AudioPlayer();
+
+  // 🎵 1. play_tone(frequency, duration)
+  const toneMatch = code.match(/music\.play_tone\((\d+),\s*(\d+)\)/);
+  if (toneMatch) {
+    const freq = parseFloat(toneMatch[1]);
+    const duration = parseFloat(toneMatch[2]);
+    await this.audio.playTone(freq, duration);
+    return "Played tone";
   }
+
+  // 🎵 2. ring_tone(frequency)
+  const ringMatch = code.match(/music\.ring_tone\((\d+)\)/);
+  if (ringMatch) {
+    const freq = parseFloat(ringMatch[1]);
+    this.audio.ringTone(freq);
+    return "Ringing tone";
+  }
+
+  // 🎵 3. rest(duration)
+  const restMatch = code.match(/music\.rest\((\d+)\)/);
+  if (restMatch) {
+    const duration = parseFloat(restMatch[1]);
+    await this.audio.rest(duration);
+    return "Rest complete";
+  }
+
+  // 🎵 4. stop()
+  if (code.includes("music.stop()")) {
+    this.audio.stopTone();
+    return "Stopped tone";
+  }
+
+  // Default: pass to simulator
+  return this.simulatorRemoteInstance.run(code);
+}
+
 
   async getStates(): Promise<State> {
     if (!this.simulatorRemoteInstance) throw new Error("Not initialized at get states.");
@@ -80,6 +124,8 @@ export class SimulatorProxy {
   }
 
   async disposeAndReload() {
+    // Stop any tone before resetting
+    this.audio?.stopTone(); //stops music when resetting
     this.simulatorRemoteInstance?.reset();
     this.worker.terminate();
     this.worker = this.createWorker();
@@ -134,6 +180,7 @@ export class SimulatorProxy {
   }
 
   dispose() {
+    this.audio?.dispose();
     this.worker.terminate();
   }
 }
