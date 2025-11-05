@@ -1024,12 +1024,17 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
       tooltip: "Play a tone of specific frequency and duration",
     },
     pythonPattern: /music\.play_tone\((\d+),\s*(\d+(?:\.\d+)?)\)/g,
-    pythonGenerator: (block) => {
+    pythonGenerator: (block, generator) => {
       const freq = block.getFieldValue("NOTE");
       const duration = block.getFieldValue("DURATION");
-      const mode = block.getFieldValue("MODE");
-      // Mode affects how the tone is played but for basic implementation we'll just generate the play_tone call
-      // In a full implementation, you might use different methods based on mode
+      const mode = block.getFieldValue("MODE") || "until_done";
+
+      // Looping in background: sustain the tone continuously without blocking
+      if (mode === "loop") {
+        return `music.ring_tone(${freq})\n`;
+      }
+
+      // Until done (blocking) and background (single-shot fallback) both emit a single play call
       return `music.play_tone(${freq}, ${duration})\n`;
     },
     pythonExtractor: (match) => ({
