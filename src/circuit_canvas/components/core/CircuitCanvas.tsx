@@ -627,7 +627,7 @@ export default function CircuitCanvas() {
     const direction = e.evt.deltaY > 0 ? 1 : -1;
     const newScale = direction > 0 ? oldScale / scaleBy : oldScale * scaleBy;
 
-    if (newScale < 0.5 || newScale > 2.5) return;
+    if (newScale < 0.2 || newScale > 5) return;
 
     // Get the position of the pointer relative to the stage's current transform
     const mousePointTo = {

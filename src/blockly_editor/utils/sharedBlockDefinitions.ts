@@ -54,6 +54,7 @@ export const BLOCK_CATEGORIES: BlockCategory[] = [
   // Place Variables directly after Logic (to match MakeCode ordering)
   { name: "Variables", color: "#A64D79" }, // Purple color matching MakeCode
   { name: "Math", color: "#F06292" }, // Pink color matching MakeCode
+  { name: "Music", color: "#D32F2F" }, //  Music category
   { name: "Uncategorized", color: "#999999" }, // Gray for uncategorized
 ];
 
@@ -66,8 +67,29 @@ export const CATEGORY_ICONS: Record<string, string> = {
   "Logic": "🔀", // Flow for logic
   "Variables": "📦", // Box for variables
   "Math": "🔢", // Numbers for math
+  "Music": "🎵", // Play Music
   "Uncategorized": "📋", // Clipboard for uncategorized
 };
+
+/**
+ * Indent a container body by one level if it isn't indented already.
+ * - Preserves existing indentation if present.
+ * - Ensures a trailing newline.
+ * - Returns an IND + 'pass' line when code is empty.
+ */
+function indentBodyIfNeeded(code: string, IND: string): string {
+  if (!code || code.trim().length === 0) return `${IND}pass\n`;
+  const normalized = code.replace(/\r/g, "");
+  const lines = normalized.split("\n");
+  const firstContent = lines.find((l) => l.trim().length > 0) ?? "";
+  const startsIndented = /^\s+/.test(firstContent);
+  const processed = startsIndented
+    ? lines
+    : lines.map((l) => (l.trim().length === 0 ? l : IND + l));
+  let out = processed.join("\n");
+  if (!out.endsWith("\n")) out += "\n";
+  return out;
+}
 
 /**
  * Helper function to safely create and initialize a block
@@ -114,9 +136,9 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
       message0: "show string %1",
       args0: [
         {
-          type: "field_input",
+          type: "input_value",
           name: "TEXT",
-          text: "Hello!",
+          check: "String",
         },
       ],
       previousStatement: null,
@@ -124,9 +146,9 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
       tooltip: "Show a string on the display",
     },
     pythonPattern: /basic\.show_string\((['"])(.+?)\1\)/g,
-    pythonGenerator: (block) => {
-      const text = block.getFieldValue("TEXT");
-      return `basic.show_string(${JSON.stringify(text)})\n`;
+    pythonGenerator: (block, generator) => {
+      const text = generator.valueToCode(block, "TEXT", (generator as any).ORDER_NONE) || '""';
+      return `basic.show_string(${text})\n`;
     },
     pythonExtractor: (match) => ({
       TEXT: match[2],
@@ -629,10 +651,10 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
     pythonPattern: /def\s+on_button_pressed_(a|b|ab)\s*\(\s*\)\s*:([\s\S]*?)\n\s*input\.on_button_pressed\(\s*Button\.(A|B|AB)\s*,\s*([A-Za-z_]\w*)\s*\)/gi,
     pythonGenerator: (block, generator) => {
       const btn = block.getFieldValue("BUTTON");
+      const IND = ((generator as any)?.INDENT ?? "    ") as string;
       const statements = generator.statementToCode(block, "DO");
       const funcName = `on_button_pressed_${btn.toLowerCase()}`;
       // Collect variables used in this handler
-      const IND = ((generator as any)?.INDENT ?? "    ") as string;
       const used = new Set<string>();
       const assigned = new Set<string>();
       try {
@@ -664,9 +686,11 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
           }
         }
       } catch (_) {}
-      const initLines = Array.from(used).filter((n) => !assigned.has(n)).map((n) => `${IND}${n} = 0\n`).join("");
-      const body = statements ? statements.replace(/^/gm, IND) : `${IND}pass\n`;
-      return `def ${funcName}():\n${initLines}${body}\ninput.on_button_pressed(Button.${btn}, ${funcName})\n`;
+      const globals = Array.from(used);
+      const globalLine = globals.length ? `${IND}global ${globals.join(", ")}\n` : "";
+      // Ensure body is indented one level when needed
+      const body = indentBodyIfNeeded(statements, IND);
+      return `def ${funcName}():\n${globalLine}${body}\ninput.on_button_pressed(Button.${btn}, ${funcName})\n`;
     },
     pythonExtractor: (match) => ({
       BUTTON: (match[3] || match[1]).toUpperCase(),
@@ -731,8 +755,8 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
     // - def on_forever():\n    ...\n    basic.forever(on_forever)
     pythonPattern: /(def\s+on_forever\(\s*\)\s*:|basic\.forever\(\s*on_forever\s*\)|while\s+True\s*:)/g,
     pythonGenerator: (block, generator) => {
-      const statements = generator.statementToCode(block, "DO");
       const IND = ((generator as any)?.INDENT ?? "    ") as string;
+      const statements = generator.statementToCode(block, "DO");
       // Collect variables used in this container
       const used = new Set<string>();
       const assigned = new Set<string>();
@@ -764,13 +788,12 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
           }
         }
       } catch (_) {}
-      // Initialize variables that are used but not explicitly set
-      const initLines = Array.from(used).filter((n) => !assigned.has(n)).map((n) => `${IND}${n} = 0\n`).join("");
+      const globals = Array.from(used);
+      const globalLine = globals.length ? `${IND}global ${globals.join(", ")}\n` : "";
 
-      const body = statements && statements.trim().length > 0
-        ? statements // already correctly indented by Blockly for a nested statement
-        : IND + "# your code here\n";
-      return `def on_forever():\n${initLines}${body}basic.forever(on_forever)\n`;
+      // Ensure body is indented one level when needed
+      const body = indentBodyIfNeeded(statements, IND);
+      return `def on_forever():\n${globalLine}${body}basic.forever(on_forever)\n`;
     },
     pythonExtractor: (_match) => ({
       STATEMENTS: "",
@@ -793,8 +816,8 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
     },
     pythonPattern: /def\s+on_start\(\s*\)\s*:([\s\S]*?)(?=\n(?:\S|$))/g,
     pythonGenerator: (block, generator) => {
-      const statements = generator.statementToCode(block, "DO");
       const IND = ((generator as any)?.INDENT ?? "    ") as string;
+      const statements = generator.statementToCode(block, "DO");
       // Collect variables used in on_start
       const used = new Set<string>();
       const assigned = new Set<string>();
@@ -826,9 +849,11 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
           }
         }
       } catch (_) {}
-      const initLines = Array.from(used).filter((n) => !assigned.has(n)).map((n) => `${IND}${n} = 0\n`).join("");
-      const bodyIndented = statements ? statements.replace(/^/gm, IND) : `${IND}pass\n`;
-      return `def on_start():\n${initLines}${bodyIndented}\non_start()\n`;
+      const globals = Array.from(new Set<string>([...used]));
+      const globalLine = globals.length ? `${IND}global ${globals.join(", ")}\n` : "";
+      // Ensure body is indented one level when needed
+      const bodyIndented = indentBodyIfNeeded(statements, IND);
+      return `def on_start():\n${globalLine}${bodyIndented}\non_start()\n`;
     },
     pythonExtractor: (match) => ({
       STATEMENTS: match[1].trim(),
@@ -954,6 +979,7 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
   },
 
   // --- MUSIC BLOCKS ---
+<<<<<<< HEAD
 {
   type: "music_play_tone",
   category: "Music",
@@ -1095,7 +1121,188 @@ export const SHARED_MICROBIT_BLOCKS: SharedBlockDefinition[] = [
   },
 },
 // --- END MUSIC BLOCKS ---
+=======
+  {
+    type: "music_play_tone",
+    category: "Music",
+    blockDefinition: {
+      type: "music_play_tone",
+      message0: "play tone %1 for %2 beat %3",
+      args0: [
+        {
+          type: "field_dropdown",
+          name: "NOTE",
+          options: [
+            ["Middle C", "262"],
+            ["Middle D", "294"],
+            ["Middle E", "330"],
+            ["Middle F", "349"],
+            ["Middle G", "392"],
+            ["Middle A", "440"],
+            ["Middle B", "494"],
+          ],
+        },
+        {
+          type: "field_dropdown",
+          name: "DURATION",
+          options: [
+            ["1", "1"],
+            ["1/2", "0.5"],
+            ["1/4", "0.25"],
+            ["1/8", "0.125"],
+            ["2", "2"],
+            ["4", "4"],
+          ],
+        },
+        {
+          type: "field_dropdown",
+          name: "MODE",
+          options: [
+            ["until done", "until_done"],
+            ["in background", "background"],
+            ["looping in background", "loop"],
+          ],
+        },
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      tooltip: "Play a tone of specific frequency and duration",
+    },
+    pythonPattern: /music\.play_tone\((\d+),\s*(\d+(?:\.\d+)?)\)/g,
+    pythonGenerator: (block) => {
+      const freq = block.getFieldValue("NOTE");
+      const duration = block.getFieldValue("DURATION");
+      const mode = block.getFieldValue("MODE");
+      // Mode affects how the tone is played but for basic implementation we'll just generate the play_tone call
+      // In a full implementation, you might use different methods based on mode
+      return `music.play_tone(${freq}, ${duration})\n`;
+    },
+    pythonExtractor: (match) => ({
+      NOTE: match[1],
+      DURATION: match[2],
+      MODE: "until_done",
+    }),
+    blockCreator: (workspace, values) => {
+      const block = workspace.newBlock("music_play_tone");
+      block.setFieldValue(values.NOTE || "262", "NOTE");
+      block.setFieldValue(values.DURATION || "1", "DURATION");
+      block.setFieldValue(values.MODE || "until_done", "MODE");
+      return block;
+    },
+  },
+  {
+    type: "music_ring_tone",
+    category: "Music",
+    blockDefinition: {
+      type: "music_ring_tone",
+      message0: "ring tone (Hz) %1",
+      args0: [
+        {
+          type: "field_number",
+          name: "FREQ",
+          value: 262,
+          min: 100,
+          max: 10000,
+        },
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      tooltip: "Continuously play a tone at the given frequency",
+    },
+    pythonPattern: /music\.ring_tone\((\d+)\)/g,
+    pythonGenerator: (block) => {
+      const freq = block.getFieldValue("FREQ");
+      return `music.ring_tone(${freq})\n`;
+    },
+    pythonExtractor: (match) => ({
+      FREQ: parseInt(match[1]),
+    }),
+    blockCreator: (workspace, values) => {
+      const block = workspace.newBlock("music_ring_tone");
+      block.setFieldValue(values.FREQ || 262, "FREQ");
+      return block;
+    },
+  },
+  {
+    type: "music_rest",
+    category: "Music",
+    blockDefinition: {
+      type: "music_rest",
+      message0: "rest for %1 beat",
+      args0: [
+        {
+          type: "field_dropdown",
+          name: "DURATION",
+          options: [
+            ["1", "1"],
+            ["1/2", "0.5"],
+            ["1/4", "0.25"],
+            ["1/8", "0.125"],
+            ["2", "2"],
+            ["4", "4"],
+          ],
+        },
+      ],
+      previousStatement: null,
+      nextStatement: null,
+      tooltip: "Pause playback for a number of beats",
+    },
+    pythonPattern: /music\.rest\((\d+(?:\.\d+)?)\)/g,
+    pythonGenerator: (block) => {
+      const duration = block.getFieldValue("DURATION");
+      return `music.rest(${duration})\n`;
+    },
+    pythonExtractor: (match) => ({
+      DURATION: match[1],
+    }),
+    blockCreator: (workspace, values) => {
+      const block = workspace.newBlock("music_rest");
+      block.setFieldValue(values.DURATION || "1", "DURATION");
+      return block;
+    },
+  },
+  // --- END MUSIC BLOCKS ---
+
+  {
+    type: "text",
+    category: "Math",
+    blockDefinition: {
+      type: "text",
+      message0: "%1",
+      args0: [
+        {
+          type: "field_input",
+          name: "TEXT",
+          text: "",
+        },
+      ],
+      output: "String",
+      tooltip: "A text value",
+      helpUrl: "",
+    },
+    pythonPattern: /(['"])(.+?)\1/g,
+    pythonGenerator: (block, generator) => {
+      const text = block.getFieldValue("TEXT");
+      const code = JSON.stringify(text);
+      return [code, (generator as any).ORDER_ATOMIC || 0];
+    },
+    pythonExtractor: (match) => ({
+      TEXT: match[2],
+    }),
+    blockCreator: (workspace, values) => {
+      return createAndInitializeBlock(workspace, "text", {
+        TEXT: values.TEXT || "",
+      });
+    },
+  },
+
+  
+
+
+>>>>>>> eb637bcf33d647903e60fb892462a0fc53dcbe28
 ];
+
+
 
 /**
  * Utility functions for working with shared block definitions
@@ -1466,13 +1673,18 @@ export function createToolboxXmlFromBlocks(): string {
           }
           fieldsXml += `\n      <field name="${arg.name}">${defaultValue}</field>`;
         } else if (arg.type === "input_value") {
-          // Provide sensible default shadows in the toolbox for numeric inputs
-          // Specifically: show_number's NUM should have a math_number 0 shadow (MakeCode-like)
+          // Provide sensible default shadows in the toolbox for numeric and string inputs
           const wantsNumberShadow =
             (block.type === "show_number" && arg.name === "NUM") ||
             (arg.check && (Array.isArray(arg.check) ? arg.check.includes("Number") : arg.check === "Number"));
+          const wantsTextShadow =
+            (block.type === "show_string" && arg.name === "TEXT") ||
+            (arg.check && (Array.isArray(arg.check) ? arg.check.includes("String") : arg.check === "String"));
+          
           if (wantsNumberShadow) {
             valuesXml += `\n      <value name="${arg.name}">\n        <shadow type="math_number">\n          <field name="NUM">0</field>\n        </shadow>\n      </value>`;
+          } else if (wantsTextShadow) {
+            valuesXml += `\n      <value name="${arg.name}">\n        <shadow type="text">\n          <field name="TEXT">Hello!</field>\n        </shadow>\n      </value>`;
           }
         }
       }
@@ -1497,6 +1709,25 @@ export function createToolboxXmlFromBlocks(): string {
       // Use Blockly's dynamic variables category; include icon for visual parity
       // Blocks appear only after the user creates a variable.
       xml += `  <category name="${icon} ${categoryName}" colour="${color}" custom="VARIABLE"></category>\n`;
+      emitted.add(categoryName);
+      continue;
+    }
+    
+    if (categoryName === "Math") {
+      // Add Math category with number and text blocks
+      xml += `  <category name="${icon} ${categoryName}" colour="${color}">\n`;
+      // Add our custom text block first
+      const mathBlocks = blocksByCategory[categoryName];
+      if (mathBlocks && mathBlocks.length > 0) {
+        for (const block of mathBlocks) {
+          xml += `    ${generateBlockXml(block)}\n`;
+        }
+      }
+      // Add built-in math_number block
+      xml += `    <block type="math_number">\n`;
+      xml += `      <field name="NUM">0</field>\n`;
+      xml += `    </block>\n`;
+      xml += `  </category>\n`;
       emitted.add(categoryName);
       continue;
     }
@@ -1547,3 +1778,4 @@ export function createToolboxXmlFromBlocks(): string {
   xml += `</xml>`;
   return xml;
 }
+

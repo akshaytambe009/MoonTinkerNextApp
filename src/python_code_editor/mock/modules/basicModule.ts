@@ -90,7 +90,7 @@ export class BasicModule {
      * characters the value is treated as 0. The numeric value is converted to string
      * and displayed using showString (single digit renders statically; longer values scroll).
      */
-    async showNumber(value: string | number): Promise<void> {
+    showNumber(value: string | number): void {
         let num: number;
         if (typeof value === "string") {
             // If any alphabetic characters are present, treat as 0
@@ -110,7 +110,8 @@ export class BasicModule {
 
         // Format number string: keep decimal for non-integers
         const str = Number.isInteger(num) ? num.toString() : num.toString();
-        await this.showString(str);
+        // Fire-and-forget to avoid requiring 'await' in Python code paths
+        void this.showString(str);
     }
 
     /**

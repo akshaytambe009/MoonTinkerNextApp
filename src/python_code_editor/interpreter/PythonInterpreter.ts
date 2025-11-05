@@ -109,8 +109,8 @@ export class PythonInterpreter {
   }
 
   private transformCode(code: string): string {
-    // List of blocking functions to insert `await` before
-    const awaitFunctions = ["basic.show_string", "basic.show_number", "basic.pause"];
+    // Only treat explicit blocking calls as awaitable. Let show_string/number run fire-and-forget.
+    const awaitFunctions = ["basic.pause"]; // do not auto-await show_string/number to avoid syntax errors inside sync defs
 
     const lines = code.split("\n");
     const transformedLines = lines.map((line) => {

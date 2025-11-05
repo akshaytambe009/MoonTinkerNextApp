@@ -200,18 +200,92 @@ export default function Microbit({
           row.map((_, x) => {
             const b = Math.max(0, Math.min(255, Number(leds[y][x] || 0)));
             const on = b > 0;
-            const opacity = b / 255;
+            const brightness = on ? b / 255 : 0;
+            
+            const centerX = 84 + x * 12.4;
+            const centerY = 114 + y * 12.4;
+            
             return (
-              <Rect
-                key={`${x}-${y}`}
-                x={83 + x * 12.4}
-                y={112 + y * 12.4}
-                width={3.5}
-                height={10}
-                fill={on ? "yellow" : "#333"}
-                opacity={on ? opacity : 1}
-                cornerRadius={3}
-              />
+              <Group key={`${x}-${y}`}>
+                {/* Outermost extra wide glow - most transparent */}
+                {on && (
+                  <Rect
+                    x={centerX - 8}
+                    y={centerY - 8}
+                    width={16}
+                    height={16}
+                    fill="#8B0000"
+                    opacity={0.08 * brightness}
+                    cornerRadius={8}
+                    blur={10}
+                  />
+                )}
+                {/* Outermost soft glow - centered */}
+                {on && (
+                  <Rect
+                    x={centerX - 6}
+                    y={centerY - 6}
+                    width={12}
+                    height={12}
+                    fill="#8B0000"
+                    opacity={0.15 * brightness}
+                    cornerRadius={6}
+                    blur={8}
+                  />
+                )}
+                {/* Middle glow ring - centered */}
+                {on && (
+                  <Rect
+                    x={centerX - 4.5}
+                    y={centerY - 4.5}
+                    width={9}
+                    height={9}
+                    fill="#CC0000"
+                    opacity={0.25 * brightness}
+                    cornerRadius={4}
+                    blur={5}
+                  />
+                )}
+                {/* Inner bright glow - centered */}
+                {on && (
+                  <Rect
+                    x={centerX - 3}
+                    y={centerY - 3}
+                    width={6}
+                    height={6}
+                    fill="#FF4444"
+                    opacity={0.35 * brightness}
+                    cornerRadius={2}
+                    blur={3}
+                  />
+                )}
+                {/* Main LED body - square shape */}
+                <Rect
+                  x={centerX - 2.5}
+                  y={centerY - 2.5}
+                  width={5}
+                  height={5}
+                  fill={on ? "#FF3333" : "#545050ff"}
+                  opacity={on ? 0.9 : 0.5}
+                  cornerRadius={1.5}
+                  shadowColor={on ? "#FF6666" : "#000000"}
+                  shadowBlur={on ? 2 : 1}
+                  shadowOpacity={on ? 0.4 : 0.2}
+                  shadowOffset={{ x: 0, y: 0 }}
+                />
+                {/* Bright center highlight - small square */}
+                {on && (
+                  <Rect
+                    x={centerX - 1}
+                    y={centerY - 1}
+                    width={2}
+                    height={2}
+                    fill="#FFFFFF"
+                    opacity={0.8 * brightness}
+                    cornerRadius={0.5}
+                  />
+                )}
+              </Group>
             );
           })
         )}
@@ -237,7 +311,7 @@ export default function Microbit({
             stroke={logoStroke}
             strokeWidth={3}
             fill="rgba(0,0,0,0.55)"
-            opacity={0.95}
+            opacity={10}
           />
           {/* Inner pads */}
           <Circle x={LOGO_W * 0.30} y={LOGO_H / 2} radius={2.5} fill={logoStroke} />
